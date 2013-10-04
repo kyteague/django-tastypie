@@ -1263,7 +1263,7 @@ class Resource(six.with_metaclass(DeclarativeMetaclass)):
         # TODO: Uncached for now. Invalidation that works for everyone may be
         #       impossible.
         base_bundle = self.build_bundle(request=request)
-        objects = self.obj_get_list(bundle=base_bundle, **self.remove_api_resource_names(kwargs))
+        objects = self.obj_get_list(base_bundle, filters=self.remove_api_resource_names(kwargs))
         sorted_objects = self.apply_sorting(objects, options=request.GET)
 
         paginator = self._meta.paginator_class(request.GET, sorted_objects, resource_uri=self.get_resource_uri(), limit=self._meta.limit, max_limit=self._meta.max_limit, collection_name=self._meta.collection_name)
@@ -1358,7 +1358,7 @@ class Resource(six.with_metaclass(DeclarativeMetaclass)):
             raise BadRequest("Invalid data sent.")
 
         basic_bundle = self.build_bundle(request=request)
-        self.obj_delete_list_for_update(bundle=basic_bundle, **self.remove_api_resource_names(kwargs))
+        self.obj_delete_list_for_update(bundle=basic_bundle, filters=self.remove_api_resource_names(kwargs))
         bundles_seen = []
 
         for object_data in deserialized[self._meta.collection_name]:
@@ -1367,7 +1367,7 @@ class Resource(six.with_metaclass(DeclarativeMetaclass)):
             # Attempt to be transactional, deleting any previously created
             # objects if validation fails.
             try:
-                self.obj_create(bundle=bundle, **self.remove_api_resource_names(kwargs))
+                self.obj_create(bundle=bundle, attrs=self.remove_api_resource_names(kwargs))
                 bundles_seen.append(bundle)
             except ImmediateHttpResponse:
                 self.rollback(bundles_seen)
@@ -1414,7 +1414,7 @@ class Resource(six.with_metaclass(DeclarativeMetaclass)):
                 updated_bundle = self.alter_detail_data_to_serialize(request, updated_bundle)
                 return self.create_response(request, updated_bundle)
         except (NotFound, MultipleObjectsReturned):
-            updated_bundle = self.obj_create(bundle=bundle, **self.remove_api_resource_names(kwargs))
+            updated_bundle = self.obj_create(bundle=bundle, attrs=self.remove_api_resource_names(kwargs))
             location = self.get_resource_uri(updated_bundle)
 
             if not self._meta.always_return_data:
@@ -2026,14 +2026,14 @@ class BaseModelResource(Resource):
         """
         return self._meta.queryset._clone()
 
-    def obj_get_list(self, bundle, **kwargs):
+    def obj_get_list(self, bundle, filters=None, **kwargs):
         """
         A ORM-specific implementation of ``obj_get_list``.
 
         Takes an optional ``request`` object, whose ``GET`` dictionary can be
         used to narrow the query.
         """
-        filters = {}
+        filters = filters or {}
 
         if hasattr(bundle.request, 'GET'):
             # Grab a mutable copy.
@@ -2071,13 +2071,15 @@ class BaseModelResource(Resource):
         except ValueError:
             raise NotFound("Invalid resource lookup data provided (mismatched type).")
 
-    def obj_create(self, bundle, **kwargs):
+    def obj_create(self, bundle, attrs=None, **kwargs):
         """
         A ORM-specific implementation of ``obj_create``.
         """
         bundle.obj = self._meta.object_class()
 
-        for key, value in kwargs.items():
+        attrs = attrs or {}
+        attrs.update(kwargs)
+        for key, value in attrs.items():
             setattr(bundle.obj, key, value)
 
         bundle = self.full_hydrate(bundle)
@@ -2157,11 +2159,11 @@ class BaseModelResource(Resource):
             for authed_obj in deletable_objects:
                 authed_obj.delete()
 
-    def obj_delete_list_for_update(self, bundle, **kwargs):
+    def obj_delete_list_for_update(self, bundle, filters=None, **kwargs):
         """
         A ORM-specific implementation of ``obj_delete_list_for_update``.
         """
-        objects_to_delete = self.obj_get_list(bundle=bundle, **kwargs)
+        objects_to_delete = self.obj_get_list(bundle=bundle, filters=filters, **kwargs)
         deletable_objects = self.authorized_update_list(objects_to_delete, bundle)
 
         if hasattr(deletable_objects, 'delete'):
