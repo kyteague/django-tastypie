@@ -2037,7 +2037,9 @@ class BaseModelResource(Resource):
 
         if hasattr(bundle.request, 'GET'):
             # Grab a mutable copy.
-            filters = bundle.request.GET.copy()
+            request_filters = bundle.request.GET.copy()
+            request_filters.update(filters)
+            filters = request_filters
 
         # Update with the provided kwargs.
         filters.update(kwargs)
