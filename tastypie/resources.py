@@ -1433,7 +1433,7 @@ class Resource(six.with_metaclass(DeclarativeMetaclass)):
         If the resources are deleted, return ``HttpNoContent`` (204 No Content).
         """
         bundle = self.build_bundle(request=request)
-        self.obj_delete_list(bundle=bundle, request=request, **self.remove_api_resource_names(kwargs))
+        self.obj_delete_list(bundle=bundle, request=request, filters=self.remove_api_resource_names(kwargs))
         return http.HttpNoContent()
 
     def delete_detail(self, request, **kwargs):
@@ -1450,7 +1450,7 @@ class Resource(six.with_metaclass(DeclarativeMetaclass)):
         bundle = Bundle(request=request)
 
         try:
-            self.obj_delete(bundle=bundle, **self.remove_api_resource_names(kwargs))
+            self.obj_delete(bundle=bundle, filters=self.remove_api_resource_names(kwargs))
             return http.HttpNoContent()
         except NotFound:
             return http.HttpNotFound()
@@ -2051,15 +2051,17 @@ class BaseModelResource(Resource):
         except ValueError:
             raise BadRequest("Invalid resource lookup data provided (mismatched type).")
 
-    def obj_get(self, bundle, **kwargs):
+    def obj_get(self, bundle, filters=None, **kwargs):
         """
         A ORM-specific implementation of ``obj_get``.
 
         Takes optional ``kwargs``, which are used to narrow the query to find
         the instance.
         """
+        filters = filters or {}
+        filters.update(kwargs)
         try:
-            object_list = self.get_object_list(bundle.request).filter(**kwargs)
+            object_list = self.get_object_list(bundle.request).filter(**filters)
             stringified_kwargs = ', '.join(["%s=%s" % (k, v) for k, v in kwargs.items()])
 
             if len(object_list) <= 0:
@@ -2147,11 +2149,11 @@ class BaseModelResource(Resource):
         bundle = self.full_hydrate(bundle)
         return self.save(bundle, skip_errors=skip_errors)
 
-    def obj_delete_list(self, bundle, **kwargs):
+    def obj_delete_list(self, bundle, filters=None, **kwargs):
         """
         A ORM-specific implementation of ``obj_delete_list``.
         """
-        objects_to_delete = self.obj_get_list(bundle=bundle, **kwargs)
+        objects_to_delete = self.obj_get_list(bundle=bundle, filters=filters, **kwargs)
         deletable_objects = self.authorized_delete_list(objects_to_delete, bundle)
 
         if hasattr(deletable_objects, 'delete'):
@@ -2175,7 +2177,7 @@ class BaseModelResource(Resource):
             for authed_obj in deletable_objects:
                 authed_obj.delete()
 
-    def obj_delete(self, bundle, **kwargs):
+    def obj_delete(self, bundle, filters=None, **kwargs):
         """
         A ORM-specific implementation of ``obj_delete``.
 
@@ -2184,7 +2186,7 @@ class BaseModelResource(Resource):
         """
         if not hasattr(bundle.obj, 'delete'):
             try:
-                bundle.obj = self.obj_get(bundle=bundle, **kwargs)
+                bundle.obj = self.obj_get(bundle=bundle, filters=filters, **kwargs)
             except ObjectDoesNotExist:
                 raise NotFound("A model instance matching the provided arguments could not be found.")
 
